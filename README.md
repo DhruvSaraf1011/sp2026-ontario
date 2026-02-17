@@ -1,2 +1,2 @@
 # Capstone GitHub Training Repo
-## This is README.md
+## Build the Best Collaborative Story (Using GitHub Like a Real Team)
