@@ -1,4 +1,5 @@
 # flight schedule jan 2024-jan 2026 cleaned data - script
+#contains 3 visualizations: departing, arriving, net
 
 install.packages("readxl")
 
