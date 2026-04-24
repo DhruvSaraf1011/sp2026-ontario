@@ -1,0 +1,97 @@
+---
+title: "DS180"
+output: html_document
+date: "2026-05-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(readr)
+library(ggplot2)
+library(modelr)
+```
+
+```{r}
+library(readr)
+df <- read_csv("~/Downloads/TIBA Parking Data.csv")
+print (df)
+```
+
+```{r}
+library(readr)
+df_legacy <- read_csv("~/Downloads/combined_lot_transactions.csv")
+print (df_legacy)
+```
+
+```{r}
+library(dplyr)
+
+df_legacy <- df_legacy %>%
+  mutate(
+    entry_time = `Entry Time`,
+    exit_time = `Trans Time`
+  ) %>%
+  select(Lot_Number, Revenue, Duration_Min, entry_time, exit_time)
+print(df_legacy)
+```
+
+```{r}
+df <- df %>%
+  mutate(
+    entry_time = dmy_hms(TicketEntryDateTime),
+    exit_time  = dmy_hms(TicketExitDateTime),
+    duration_hours = as.numeric(difftime(exit_time, entry_time, units = "hours"))
+  )
+print(df)
+```
+
+```{r}
+df <- df %>%
+  mutate(Duration_Min = duration_hours * 60)
+```
+
+```{r}
+library(dplyr)
+library(stringr)
+
+df <- df %>%
+  mutate(
+    Lot_Number = as.numeric(str_extract(SiteDescription, "\\d+$")),
+    Revenue = PaymentSum,
+    Duration_Min = duration_hours * 60
+  ) %>%
+  select(Lot_Number, Revenue, Duration_Min, entry_time, exit_time)
+print (df)
+```
+
+```{r}
+library(dplyr)
+
+df_legacy <- df_legacy %>%
+  mutate(
+    Lot_Number = as.numeric(Lot_Number),
+    Revenue = as.numeric(Revenue),
+    Duration_Min = as.numeric(Duration_Min),
+    entry_time = as.POSIXct(entry_time),
+    exit_time = as.POSIXct(exit_time)
+  ) %>%
+  select(Lot_Number, Revenue, Duration_Min, entry_time, exit_time)
+
+df <- df %>%
+  mutate(
+    Lot_Number = as.numeric(Lot_Number),
+    Revenue = (as.numeric(Revenue))/100,
+    Duration_Min = as.numeric(Duration_Min),
+    entry_time = as.POSIXct(entry_time),
+    exit_time = as.POSIXct(exit_time)
+  ) %>%
+  select(Lot_Number, Revenue, Duration_Min, entry_time, exit_time)
+
+df_combined <- bind_rows(df_legacy, df)
+print (df_combined)
+```
