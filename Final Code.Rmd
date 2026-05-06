@@ -1,0 +1,698 @@
+---
+title: "Pre-book Airport Parking Performance Analysis"
+author: "Myrvens Sylvestre"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+    theme: cosmo
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE, 
+  message = FALSE,
+  fig.width = 12, 
+  fig.height = 7,
+  fig.align = "center"
+)
+
+.libPaths(c("C:/Temp/R_packages", .libPaths()))
+setwd("C:/Users/Myrvens Sylvestre/Downloads/Capstone")
+```
+
+```{r load-libraries, include=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(knitr)
+library(kableExtra)
+library(ragg)
+
+cat("✓ All packages loaded successfully\n")
+```
+
+```{r load-data, include=FALSE}
+data <- readRDS("prebook_parking_3months_CLEANED.rds")
+
+data_clean <- data %>%
+  filter(!is.na(car_park_name) & car_park_name != "MISSING TRANSLATION")
+
+cat("✓ Clean dataset created\n")
+cat("  Original rows:", nrow(data), "\n")
+cat("  Clean rows:", nrow(data_clean), "\n")
+cat("  Rows removed (MISSING TRANSLATION):", nrow(data) - nrow(data_clean), "\n")
+```
+
+```{r shared-theme, include=FALSE}
+chart_theme <- theme_minimal(base_size = 13) +
+  theme(
+    plot.title         = element_text(size = 18, color = "#000000", family = "sans"),  # Changed from 14 to 18
+    plot.subtitle      = element_blank(),
+    plot.caption       = element_blank(),
+    axis.text.x        = element_text(color = "#000000", size = 11, family = "sans"),
+    axis.text.y        = element_text(color = "#000000", size = 11, family = "sans"),
+    axis.text.y.right  = element_text(color = "#000000", size = 11, family = "sans"),
+    axis.title.x       = element_text(color = "#000000", size = 12, family = "sans"),
+    axis.title.y       = element_text(color = "#000000", size = 12, family = "sans"),
+    axis.title.y.right = element_text(color = "#000000", size = 12, family = "sans"),
+    legend.position    = "top",
+    legend.text        = element_text(size = 11, family = "sans"),
+    legend.title       = element_blank(),
+    panel.grid.major   = element_line(color = "#E0E0E0"),
+    panel.grid.minor   = element_blank(),
+    strip.background   = element_rect(fill = "#E8F4F8", color = NA),
+    strip.text         = element_text(size = 11, color = "#000000", family = "sans")
+  )
+```
+
+---
+
+# Executive Summary
+
+```{r executive-summary}
+total_bookings    <- nrow(data_clean)
+total_revenue     <- sum(data_clean$booking_current_value, na.rm = TRUE)
+total_cancelled   <- sum(data_clean$is_cancelled, na.rm = TRUE)
+cancellation_rate <- mean(data_clean$is_cancelled, na.rm = TRUE) * 100
+avg_duration      <- mean(data_clean$duration, na.rm = TRUE)
+date_range_start  <- min(data_clean$booking_date, na.rm = TRUE)
+date_range_end    <- max(data_clean$booking_date, na.rm = TRUE)
+
+lot_performance <- data_clean %>%
+  group_by(car_park_name) %>%
+  summarise(
+    total_revenue = sum(booking_current_value, na.rm = TRUE),
+    bookings = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(total_revenue))
+
+top_lot         <- lot_performance$car_park_name[1]
+top_lot_revenue <- lot_performance$total_revenue[1]
+```
+
+:::{.alert .alert-info}
+**Analysis Period:** `r format(date_range_start, "%B %d, %Y")` to `r format(date_range_end, "%B %d, %Y")`
+
+**Dataset Overview:**
+
+- **Total Bookings:** `r format(total_bookings, big.mark = ",")`
+- **Total Revenue:** `r dollar(total_revenue)`
+- **Cancellation Rate:** `r round(cancellation_rate, 2)`%
+- **Average Stay Duration:** `r round(avg_duration, 1)` days
+- **Top Performing Lot:** **`r top_lot`** (`r dollar(top_lot_revenue)`)
+:::
+
+---
+
+# 1. Parking Lot Overview
+
+## 1.1 Quick Stats by Lot
+
+```{r lot-overview-table}
+lot_overview <- data_clean %>%
+  group_by(car_park_name) %>%
+  summarise(
+    Bookings              = n(),
+    `Total Revenue`       = sum(booking_current_value, na.rm = TRUE),
+    `Avg Revenue/Booking` = mean(booking_current_value, na.rm = TRUE),
+    `Avg Duration (days)` = mean(duration, na.rm = TRUE),
+    `Cancellations`       = sum(is_cancelled, na.rm = TRUE),
+    `Cancel Rate (%)`     = mean(is_cancelled, na.rm = TRUE) * 100,
+    .groups = "drop"
+  ) %>%
+  arrange(desc(`Total Revenue`))
+
+kable(lot_overview,
+      digits = 2,
+      format.args = list(big.mark = ","),
+      caption = "Parking Lot Performance Snapshot") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                full_width = FALSE) %>%
+  column_spec(1, bold = TRUE, color = "#1F4E78") %>%
+  row_spec(1, bold = TRUE, background = "#D5E8D4")
+```
+
+## 1.2 Visual Comparison
+
+```{r lot-overview-chart, fig.height=6}
+ggplot(lot_overview, aes(x = reorder(car_park_name, -`Total Revenue`),
+                         y = Bookings,
+                         fill = car_park_name)) +
+  geom_col(alpha = 0.85, width = 0.7) +
+  geom_text(aes(label = paste0(format(Bookings, big.mark = ","), "\n",
+                                dollar(`Total Revenue`))),
+            vjust = -0.5, size = 3.5, color = "#000000", family = "sans") +
+  scale_fill_brewer(palette = "Set3") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    title = "Bookings and Revenue - By Parking Lot",
+    x     = "Parking Lot",
+    y     = "Number of Bookings"
+  ) +
+  chart_theme +
+  theme(
+    legend.position    = "none",
+    panel.grid.major.x = element_blank()
+  )
+
+ggsave("visualizations/lot_overview.png", width = 12, height = 6,
+       dpi = 300, bg = "white", device = ragg::agg_png)
+```
+
+---
+
+# 2. Revenue Story: Which Lots Make the Most Money?
+
+## 2.1 Total Revenue Comparison
+
+```{r revenue-by-lot, fig.height=7}
+ggplot(lot_overview, aes(x = reorder(car_park_name, `Total Revenue`),
+                         y = `Total Revenue`,
+                         fill = car_park_name)) +
+  geom_col(alpha = 0.85, width = 0.7) +
+  geom_text(aes(label = paste0(dollar(`Total Revenue`), "\n(",
+                                format(Bookings, big.mark = ","), " bookings)")),
+            hjust = -0.1, size = 3.5, color = "#000000", family = "sans") +
+  scale_fill_brewer(palette = "Set2") +
+  scale_y_continuous(labels = dollar_format(),
+                     expand = expansion(mult = c(0, 0.2))) +
+  coord_flip() +
+  labs(
+    title = "Total Revenue - By Parking Lot",
+    x     = "Parking Lot",
+    y     = "Total Revenue"
+  ) +
+  chart_theme +
+  theme(legend.position = "none")
+
+ggsave("visualizations/revenue_by_lot_total.png", width = 12, height = 7,
+       dpi = 300, bg = "white", device = ragg::agg_png)
+```
+
+:::{.alert .alert-success}
+**Key Finding:** `r top_lot` generates the most revenue at `r dollar(top_lot_revenue)`, representing `r round(top_lot_revenue/total_revenue * 100, 1)`% of total revenue with `r format(lot_performance$bookings[1], big.mark = ",")` bookings.
+:::
+
+## 2.2 Revenue Efficiency: Revenue per Day
+
+```{r revenue-efficiency-by-lot}
+revenue_efficiency <- data_clean %>%
+  filter(!is.na(duration) & duration > 0) %>%
+  mutate(revenue_per_day = booking_current_value / duration) %>%
+  group_by(car_park_name) %>%
+  summarise(
+    bookings                = n(),
+    avg_revenue_per_day     = mean(revenue_per_day, na.rm = TRUE),
+    avg_revenue_per_booking = mean(booking_current_value, na.rm = TRUE),
+    avg_duration            = mean(duration, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(avg_revenue_per_day))
+
+kable(revenue_efficiency,
+      digits = 2,
+      col.names = c("Parking Lot", "Bookings", "Avg $/Day",
+                    "Avg $/Booking", "Avg Duration (days)"),
+      caption = "Revenue Efficiency Metrics by Lot") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(3, background = "#FFF3CD")
+```
+
+```{r revenue-efficiency-chart}
+ggplot(revenue_efficiency, aes(x = reorder(car_park_name, avg_revenue_per_day),
+                               y = avg_revenue_per_day,
+                               fill = car_park_name)) +
+  geom_col(alpha = 0.85, width = 0.7) +
+  geom_text(aes(label = sprintf("$%.2f/day\n(%d bookings)",
+                                avg_revenue_per_day, bookings)),
+            hjust = -0.1, size = 3.5, color = "#000000", family = "sans") +
+  geom_hline(yintercept = mean(revenue_efficiency$avg_revenue_per_day),
+             linetype = "dashed", color = "#C0504D", linewidth = 1) +
+  scale_fill_brewer(palette = "Pastel1") +
+  scale_y_continuous(labels = dollar_format(),
+                     expand = expansion(mult = c(0, 0.2))) +
+  coord_flip() +
+  labs(
+    title = "Revenue per Day - By Parking Lot",
+    x     = "Parking Lot",
+    y     = "Average Revenue per Day"
+  ) +
+  chart_theme +
+  theme(legend.position = "none")
+
+ggsave("visualizations/revenue_efficiency_by_lot.png", width = 12, height = 7,
+       dpi = 300, bg = "white", device = ragg::agg_png)
+```
+
+## 2.3 Revenue vs Arrivals by Hour
+
+```{r revenue-vs-arrivals-by-hour, fig.height=7}
+revenue_arrivals_by_hour <- data_clean %>%
+  mutate(
+    booking_hour = hour(booking_date),
+    booking_day  = as.Date(booking_date)
+  ) %>%
+  group_by(booking_day, booking_hour) %>%
+  summarise(
+    daily_bookings    = n(),
+    daily_avg_revenue = mean(booking_current_value, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  group_by(booking_hour) %>%
+  summarise(
+    avg_arrivals = mean(daily_bookings),
+    avg_revenue  = mean(daily_avg_revenue),
+    .groups = "drop"
+  )
+
+scale_factor <- max(revenue_arrivals_by_hour$avg_revenue,  na.rm = TRUE) /
+                max(revenue_arrivals_by_hour$avg_arrivals, na.rm = TRUE)
+
+ggplot(revenue_arrivals_by_hour, aes(x = booking_hour)) +
+  geom_line(aes(y = avg_revenue,                color = "Average Revenue"),  linewidth = 1.2) +
+  geom_line(aes(y = avg_arrivals * scale_factor, color = "Average Arrivals"), linewidth = 1.2) +
+  scale_color_manual(
+    values = c("Average Revenue"  = "#4472C4",
+               "Average Arrivals" = "#C0504D"),
+    breaks = c("Average Arrivals", "Average Revenue")
+  ) +
+  scale_y_continuous(
+    labels   = dollar_format(),
+    name     = "Average Revenue",
+    sec.axis = sec_axis(transform = ~ . / scale_factor,
+                        name      = "Average Arrivals")
+  ) +
+  scale_x_continuous(breaks = seq(0, 23, 5)) +
+  labs(
+    title = "Revenue vs Arrivals - By Hour of Day",
+    x     = "Hour of Day",
+    color = NULL
+  ) +
+  chart_theme
+
+ggsave("visualizations/revenue_vs_arrivals_by_hour.png", width = 12, height = 7,
+       dpi = 300, bg = "white", device = ragg::agg_png)
+```
+
+---
+
+# 3. Customer Behavior: How Do Parking Patterns Differ?
+
+## 3.1 Duration Patterns by Lot
+
+```{r duration-by-lot}
+duration_by_lot <- data_clean %>%
+  filter(!is.na(duration) & duration > 0) %>%
+  group_by(car_park_name) %>%
+  summarise(
+    bookings        = n(),
+    avg_duration    = mean(duration, na.rm = TRUE),
+    median_duration = median(duration, na.rm = TRUE),
+    min_duration    = min(duration, na.rm = TRUE),
+    max_duration    = max(duration, na.rm = TRUE),
+    short_stay      = sum(duration <= 3),
+    medium_stay     = sum(duration > 3 & duration <= 7),
+    long_stay       = sum(duration > 7),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(avg_duration))
+
+kable(duration_by_lot,
+      digits = 2,
+      col.names = c("Lot", "Bookings", "Avg", "Median", "Min", "Max",
+                    "≤3 days", "4-7 days", "8+ days"),
+      caption = "Parking Duration Statistics by Lot") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  add_header_above(c(" " = 2, "Duration (days)" = 4, "Stay Categories" = 3)) %>%
+  column_spec(1, bold = TRUE)
+```
+
+```{r duration-comparison-chart}
+ggplot(duration_by_lot, aes(x = reorder(car_park_name, avg_duration),
+                            y = avg_duration,
+                            fill = car_park_name)) +
+  geom_col(alpha = 0.85, width = 0.7) +
+  geom_text(aes(label = sprintf("%.1f days\n(%d bookings)", avg_duration, bookings)),
+            vjust = -0.5, size = 3.5, color = "#000000", family = "sans") +
+  geom_hline(yintercept = mean(data_clean$duration, na.rm = TRUE),
+             linetype = "dashed", color = "#808080", linewidth = 1) +
+  scale_fill_brewer(palette = "Set3") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    title = "Average Parking Duration - By Lot",
+    x     = "Parking Lot",
+    y     = "Average Duration (days)"
+  ) +
+  chart_theme +
+  theme(
+    legend.position    = "none",
+    panel.grid.major.x = element_blank()
+  )
+
+ggsave("visualizations/duration_by_lot.png", width = 12, height = 7,
+       dpi = 300, bg = "white", device = ragg::agg_png)
+```
+
+## 3.2 Stay Duration Distribution by Lot
+
+```{r duration-distribution-lot, fig.height=8}
+duration_categories <- data_clean %>%
+  filter(!is.na(duration) & duration > 0) %>%
+  mutate(
+    category = case_when(
+      duration <= 3 ~ "Short Stay (1-3 days)",
+      duration <= 7 ~ "Medium Stay (4-7 days)",
+      TRUE          ~ "Long Stay (8+ days)"
+    ),
+    category = factor(category,
+                      levels = c("Short Stay (1-3 days)",
+                                 "Medium Stay (4-7 days)",
+                                 "Long Stay (8+ days)"))
+  ) %>%
+  group_by(car_park_name, category) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(car_park_name) %>%
+  mutate(percentage = count / sum(count) * 100)
+
+ggplot(duration_categories, aes(x = car_park_name, y = percentage, fill = category)) +
+  geom_col(alpha = 0.85, width = 0.7, position = "stack") +
+  geom_text(aes(label = sprintf("%.0f%%", percentage)),
+            position = position_stack(vjust = 0.5),
+            size = 3.5, color = "white", family = "sans") +
+  scale_fill_manual(values = c("#A8D5BA", "#F4A460", "#C5A3D0")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(
+    title = "Stay Duration Distribution - By Parking Lot",
+    x     = "Parking Lot",
+    y     = "Percentage of Bookings (%)",
+    fill  = "Stay Category"
+  ) +
+  chart_theme +
+  theme(
+    legend.position    = "top",
+    panel.grid.major.x = element_blank()
+  )
+
+ggsave("visualizations/duration_distribution_by_lot.png", width = 12, height = 8,
+       dpi = 300, bg = "white", device = ragg::agg_png)
+```
+
+## 3.3 Peak Arrival Days by Lot
+
+```{r arrival-day-by-lot, fig.height=10}
+arrival_by_lot <- data_clean %>%
+  filter(!is.na(booking_arrival_date)) %>%
+  mutate(
+    arrival_dow = wday(booking_arrival_date, label = TRUE, abbr = FALSE),
+    arrival_dow = factor(arrival_dow,
+                         levels = c("Monday", "Tuesday", "Wednesday", "Thursday",
+                                    "Friday", "Saturday", "Sunday"))
+  ) %>%
+  group_by(car_park_name, arrival_dow) %>%
+  summarise(bookings = n(), .groups = "drop")
+
+ggplot(arrival_by_lot, aes(x = arrival_dow, y = bookings, fill = arrival_dow)) +
+  geom_col(alpha = 0.85, width = 0.7) +
+  geom_text(aes(label = bookings), vjust = -0.5, size = 3,
+            color = "#000000", family = "sans") +
+  facet_wrap(~ car_park_name, ncol = 2, scales = "free_y") +
+  scale_fill_brewer(palette = "Pastel1") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    title = "Customer Arrival Patterns - By Day of Week",
+    x     = "Day of Week",
+    y     = "Number of Bookings"
+  ) +
+  chart_theme +
+  theme(
+    legend.position = "none",
+    axis.text.x     = element_text(color = "#000000", size = 10,
+                                   angle = 45, hjust = 1, family = "sans")
+  )
+
+ggsave("visualizations/arrival_day_by_lot.png", width = 12, height = 10,
+       dpi = 300, bg = "white", device = ragg::agg_png)
+```
+
+---
+
+# 4. Cancellation Story: Which Lots Have Problems?
+
+## 4.1 Cancellation Rate by Day of Week
+
+```{r cancellation-rate-dow, fig.height=6}
+cancellation_by_dow <- data_clean %>%
+  mutate(
+    booking_dow = wday(booking_date, label = TRUE, abbr = FALSE),
+    booking_dow = factor(booking_dow,
+                         levels = c("Monday", "Tuesday", "Wednesday", "Thursday",
+                                    "Friday", "Saturday", "Sunday"))
+  ) %>%
+  group_by(booking_dow) %>%
+  summarise(
+    total_bookings = n(),
+    cancellations  = sum(is_cancelled, na.rm = TRUE),
+    cancel_rate    = mean(is_cancelled, na.rm = TRUE) * 100,
+    .groups = "drop"
+  )
+
+overall_avg <- mean(data_clean$is_cancelled, na.rm = TRUE) * 100
+
+ggplot(cancellation_by_dow, aes(x = booking_dow, y = cancel_rate, fill = booking_dow)) +
+  geom_col(alpha = 0.85, width = 0.7) +
+  geom_text(aes(label = sprintf("%.1f%%", cancel_rate)),
+            vjust = -0.8, size = 4, color = "#000000", family = "sans") +
+  geom_text(aes(label = sprintf("(%d/%d)", cancellations, total_bookings)),
+            vjust = -2.4, size = 3.5, color = "#000000", family = "sans") +
+  geom_hline(yintercept = overall_avg,
+             linetype = "dashed", color = "#C0504D", linewidth = 1) +
+  scale_fill_hue() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.25))) +
+  labs(
+    title = "Cancellation Rate - By Day of Week",
+    x     = "Day of Week",
+    y     = "Cancellation Rate (%)"
+  ) +
+  chart_theme +
+  theme(
+    legend.position    = "none",
+    panel.grid.major.x = element_blank()
+  )
+
+ggsave("visualizations/cancellation_rate_by_day.png", width = 12, height = 6,
+       dpi = 300, bg = "white", device = ragg::agg_png)
+```
+
+## 4.2 Cancellation Rate by Lot
+
+```{r cancellation-rate-by-lot}
+cancellation_by_lot <- data_clean %>%
+  group_by(car_park_name) %>%
+  summarise(
+    total_bookings = n(),
+    cancellations  = sum(is_cancelled, na.rm = TRUE),
+    active         = sum(!is_cancelled, na.rm = TRUE),
+    cancel_rate    = mean(is_cancelled, na.rm = TRUE) * 100,
+    .groups = "drop"
+  ) %>%
+  arrange(desc(cancel_rate))
+
+kable(cancellation_by_lot,
+      digits = 2,
+      col.names = c("Lot", "Total Bookings", "Cancelled", "Active", "Cancel Rate (%)"),
+      caption = "Cancellation Statistics by Parking Lot") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(5, background = "#FFE6E6")
+```
+
+```{r cancellation-rate-chart}
+# Fix: force lots into numeric order (2, 3, 4, 5, 6)
+cancellation_by_lot$car_park_name <- factor(
+  cancellation_by_lot$car_park_name,
+  levels = c("Lot 2 General", "Lot 3", "Lot 4 General", "Lot 5", "Lot 6")
+)
+
+ggplot(cancellation_by_lot, aes(x = car_park_name,
+                                y = cancel_rate,
+                                fill = car_park_name)) +
+  geom_col(alpha = 0.85, width = 0.7) +
+  geom_text(aes(label = sprintf("%.1f%%\n(%d/%d)",
+                                cancel_rate, cancellations, total_bookings)),
+            vjust = -0.5, size = 3.5, color = "#000000", family = "sans") +
+  geom_hline(yintercept = cancellation_rate,
+             linetype = "dashed", color = "#C0504D", linewidth = 1) +
+  scale_fill_hue() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
+  labs(
+    title = "Cancellation Rate - By Parking Lot",
+    x     = "Parking Lot",
+    y     = "Cancellation Rate (%)"
+  ) +
+  chart_theme +
+  theme(
+    legend.position    = "none",
+    panel.grid.major.x = element_blank()
+  )
+
+ggsave("visualizations/cancellation_rate_by_lot.png", width = 12, height = 7,
+       dpi = 300, bg = "white", device = ragg::agg_png)
+```
+
+:::{.alert .alert-warning}
+**Watch Out:** `r cancellation_by_lot$car_park_name[1]` has the highest cancellation rate at `r round(cancellation_by_lot$cancel_rate[1], 2)`% (`r cancellation_by_lot$cancellations[1]` out of `r cancellation_by_lot$total_bookings[1]` bookings).
+:::
+
+## 4.3 Cancellation Reasons by Lot
+
+```{r cancellation-reasons-by-lot}
+cancellation_reasons <- data_clean %>%
+  filter(!is.na(booking_cancellation_reason)) %>%
+  group_by(car_park_name, booking_cancellation_reason) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(car_park_name) %>%
+  mutate(
+    total_lot_cancellations = sum(count),
+    percentage = count / total_lot_cancellations * 100
+  ) %>%
+  arrange(car_park_name, desc(count))
+
+top_reasons <- cancellation_reasons %>%
+  group_by(car_park_name) %>%
+  slice_max(order_by = count, n = 3) %>%
+  ungroup()
+
+kable(top_reasons %>%
+        select(car_park_name, booking_cancellation_reason, count, percentage),
+      digits = 1,
+      col.names = c("Lot", "Cancellation Reason", "Count", "% of Lot Cancellations"),
+      caption = "Top 3 Cancellation Reasons per Lot") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  column_spec(1, bold = TRUE) %>%
+  pack_rows(index = table(top_reasons$car_park_name))
+```
+
+```{r cancellation-reasons-chart, fig.height=10}
+if (nrow(cancellation_reasons) > 0) {
+  ggplot(cancellation_reasons,
+         aes(x = reorder(booking_cancellation_reason, count),
+             y = count,
+             fill = car_park_name)) +
+    geom_col(alpha = 0.85, width = 0.7) +
+    facet_wrap(~ car_park_name, ncol = 2, scales = "free") +
+    coord_flip() +
+    scale_fill_hue() +
+    labs(
+      title = "Cancellation Reasons - By Parking Lot",
+      x     = "Cancellation Reason",
+      y     = "Number of Cancellations"
+    ) +
+    chart_theme +
+    theme(
+      legend.position = "none",
+      axis.text.x     = element_text(color = "#000000", size = 10, family = "sans"),
+      axis.text.y     = element_text(color = "#000000", size = 10, family = "sans")
+    )
+
+  ggsave("visualizations/cancellation_reasons_by_lot.png", width = 12, height = 10,
+         dpi = 300, bg = "white", device = ragg::agg_png)
+}
+```
+
+---
+
+## 4.4 Cancellation Timing by Lot
+
+```{r prepare-cancellation-timing-data}
+cancellation_by_dow_lot <- data_clean %>%
+  mutate(
+    booking_dow = wday(booking_date, label = TRUE, abbr = FALSE),
+    booking_dow = factor(booking_dow,
+                         levels = c("Monday", "Tuesday", "Wednesday", "Thursday",
+                                    "Friday", "Saturday", "Sunday"))
+  ) %>%
+  group_by(car_park_name, booking_dow) %>%
+  summarise(
+    total_bookings = n(),
+    cancellations  = sum(is_cancelled, na.rm = TRUE),
+    cancel_rate    = mean(is_cancelled, na.rm = TRUE) * 100,
+    .groups = "drop"
+  )
+
+plot_cancel_timing <- function(lot_name) {
+  ggplot(cancellation_by_dow_lot %>% filter(car_park_name == lot_name),
+         aes(x = booking_dow, y = cancel_rate, fill = booking_dow)) +
+    geom_col(alpha = 0.85, width = 0.7) +
+    geom_text(aes(label = sprintf("%.1f%%\n(%d/%d)",
+                                  cancel_rate, cancellations, total_bookings)),
+              vjust = -0.5, size = 3, color = "#000000", family = "sans") +
+    scale_fill_hue() +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+    labs(
+      title = paste0("Cancellation Rate by Day of Week - ", lot_name),
+      x     = "Day of Week",
+      y     = "Cancellation Rate (%)"
+    ) +
+    chart_theme +
+    theme(
+      legend.position = "none",
+      axis.text.x     = element_text(color = "#000000", size = 11,
+                                     angle = 45, hjust = 1, family = "sans")
+    )
+}
+```
+
+### Lot 2 General
+
+```{r cancellation-timing-lot2, fig.height=5}
+plot_cancel_timing("Lot 2 General")
+ggsave("visualizations/cancellation_timing_lot2.png", width = 10, height = 5,
+       dpi = 300, bg = "white", device = ragg::agg_png)
+```
+
+### Lot 3
+
+```{r cancellation-timing-lot3, fig.height=5}
+plot_cancel_timing("Lot 3")
+ggsave("visualizations/cancellation_timing_lot3.png", width = 10, height = 5,
+       dpi = 300, bg = "white", device = ragg::agg_png)
+```
+
+### Lot 4 General
+
+```{r cancellation-timing-lot4, fig.height=5}
+plot_cancel_timing("Lot 4 General")
+ggsave("visualizations/cancellation_timing_lot4.png", width = 10, height = 5,
+       dpi = 300, bg = "white", device = ragg::agg_png)
+```
+
+### Lot 5
+
+```{r cancellation-timing-lot5, fig.height=5}
+plot_cancel_timing("Lot 5")
+ggsave("visualizations/cancellation_timing_lot5.png", width = 10, height = 5,
+       dpi = 300, bg = "white", device = ragg::agg_png)
+```
+
+### Lot 6
+
+```{r cancellation-timing-lot6, fig.height=5}
+plot_cancel_timing("Lot 6")
+ggsave("visualizations/cancellation_timing_lot6.png", width = 10, height = 5,
+       dpi = 300, bg = "white", device = ragg::agg_png)
+```
+
+
+
+---
