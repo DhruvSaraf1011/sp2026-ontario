@@ -38,7 +38,7 @@ parking_by_hour <- parking_arrivals %>%
   )
 
 
-ggplot(parking_by_hour, aes(arrival_hour, departing_pax)) +
+parking_demand_pressure <- ggplot(parking_by_hour, aes(arrival_hour, departing_pax)) +
   geom_line(color = "steelblue", linewidth = 1.2) +
   geom_point() +
   scale_y_continuous(labels = scales::comma) +
@@ -50,6 +50,14 @@ ggplot(parking_by_hour, aes(arrival_hour, departing_pax)) +
   ) +
   theme_minimal()
 
+
+ggsave(
+  filename = "parking_demand_pressure.png",
+  plot = parking_demand_pressure,
+  width = 8,
+  height = 6,
+  units = "in"
+)
 
 #answers the question: At what time of day do the most departing passengers likely arrive at airport parking?
 #groups the entire two year dataset and adds up all departing passengers based on the arrival hour
@@ -74,7 +82,7 @@ parking_exits_by_hour <- parking_arrivals_only %>%
     arriving_pax_leaving = sum(OA_PAX_TOTAL, na.rm = TRUE)
   )
 
-ggplot(parking_exits_by_hour, aes(departure_hour, arriving_pax_leaving)) +
+arriving_passengers_demand <- ggplot(parking_exits_by_hour, aes(departure_hour, arriving_pax_leaving)) +
   geom_line(color = "darkgreen", linewidth = 1.2) +
   geom_point() +
   scale_y_continuous(labels = scales::comma) +
@@ -85,6 +93,15 @@ ggplot(parking_exits_by_hour, aes(departure_hour, arriving_pax_leaving)) +
     y = "Estimated Arriving Passenger Volume"
   ) +
   theme_minimal()
+
+
+ggsave(
+  filename = "arriving_passengers_demand.png",
+  plot = arriving_passengers_demand,
+  width = 8,
+  height = 6,
+  units = "in"
+)
 
 
 ##############################################################################################################################
@@ -120,7 +137,7 @@ parking_net <- full_join(parking_entries, parking_exits, by = "hour") %>%
     cumulative_occupancy = cumsum(net_flow)
   )
 
-ggplot(parking_net, aes(hour, cumulative_occupancy)) +
+net_estimated_parking <- ggplot(parking_net, aes(hour, cumulative_occupancy)) +
   geom_line(color = "firebrick", linewidth = 1.3) +
   geom_point() +
   scale_y_continuous(labels = scales::comma) +
@@ -133,21 +150,19 @@ ggplot(parking_net, aes(hour, cumulative_occupancy)) +
   theme_minimal()
 
 
+ggsave(
+  filename = "net_estimated_parking.png",
+  plot = net_estimated_parking,
+  width = 8,
+  height = 6,
+  units = "in"
+)
+
+
 #this assumes EVERYONE is parking, which is not the case
 #graph purely shows the number of passengers departing/arriving at ONT
 
 
-##############################################################################################################################
-
-flight_schedule_data %>%
-  mutate(
-    parking_entry_time = OD_STD - hours(2),
-    weekday = wday(parking_entry_time, label = TRUE)
-  ) %>%
-  group_by(weekday) %>%
-  summarise(pax = sum(OD_PAX_TOTAL, na.rm = TRUE)) %>%
-  ggplot(aes(weekday, pax)) +
-  geom_col(fill = "steelblue")
 
 
 

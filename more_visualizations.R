@@ -12,7 +12,7 @@ flight_schedule_data <- read_excel(
 )
 
 
-flight_schedule_data %>%
+demand_heatmap <- flight_schedule_data %>%
   filter(!is.na(OD_STD), !is.na(OD_PAX_TOTAL)) %>% #removes rows where the scheduled dep time or passenger count is missing
   mutate(
     parking_entry = OD_STD - hours(2), #shifts the departure time back 2 hours (when they arrive @ parking lot)
@@ -30,10 +30,20 @@ flight_schedule_data %>%
   theme_minimal()
 
 
+ggsave(
+  filename = "demand_heatmap.png",
+  plot = demand_heatmap,
+  width = 8,
+  height = 6,
+  units = "in"
+)
+
+
+
 ##############################################################################################################################
 
 
-flight_schedule_data %>%
+monthly_parking_demand <- flight_schedule_data %>%
   filter(!is.na(OD_STD)) %>% #drops flights with no scheduled departure time
   mutate(month = floor_date(OD_STD - hours(2), "month")) %>% #shifts departing time back 2 hours
     #rounds the timestamp down to the first of the month
@@ -49,6 +59,15 @@ flight_schedule_data %>%
        x = NULL, y = "Est. Departing Passengers (Aggregated)") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+ggsave(
+  filename = "monthly_parking_demand.png",
+  plot = monthly_parking_demand,
+  width = 8,
+  height = 6,
+  units = "in"
+)
 
 #jan 2026 drop is likely just the dataset not being finished
 
@@ -69,10 +88,12 @@ parking_by_hour <- flight_schedule_data %>%
   )
 
 
+
+
 peak_threshold <- quantile(parking_by_hour$departing_pax, 0.75)
   #calculates the 75% percentile of passenger volumes across all 24 hours (this is the threshold)
   #anything above this is considered "peak" hour
-parking_by_hour %>%
+peak_parking <- parking_by_hour %>%
   mutate(is_peak = departing_pax >= peak_threshold) %>% #adds a true or false
   ggplot(aes(arrival_hour, departing_pax, fill = is_peak)) +
   geom_col() +
@@ -85,12 +106,19 @@ parking_by_hour %>%
   theme_minimal()
 
 
+ggsave(
+  filename = "peak_parking.png",
+  plot = peak_parking,
+  width = 8,
+  height = 6,
+  units = "in"
+)
 
 
 ##############################################################################################################################
 
 
-flight_schedule_data %>%
+arrival_delays <- flight_schedule_data %>%
   filter(!is.na(OD_STD), !is.na(OD_ATD)) %>%
   mutate(delay_min = as.numeric(difftime(OD_ATD, OD_STD, units = "mins"))) %>% 
     #calculates the delay of each flight by subtracting scheduled from actual departure time in minutes
@@ -105,8 +133,16 @@ flight_schedule_data %>%
        x = "Delay (minutes)", y = "Number of Flights") +
   theme_minimal()
 
+ggsave(
+  filename = "arrival_delays.png",
+  plot = arrival_delays,
+  width = 8,
+  height = 6,
+  units = "in"
+)
 
-flight_schedule_data %>%
+
+departure_delays <- flight_schedule_data %>%
   filter(!is.na(OA_STA), !is.na(OA_ATA)) %>%
   mutate(delay_min = as.numeric(difftime(OA_ATA, OA_STA, units = "mins"))) %>%
   #calculates the delay of each flight by subtracting scheduled from actual arrival time in minutes
@@ -121,6 +157,15 @@ flight_schedule_data %>%
        x = "Delay (minutes)", y = "Number of Flights") +
   theme_minimal()
 
+
+ggsave(
+  filename = "departure_delays.png",
+  plot = departure_delays,
+  width = 8,
+  height = 6,
+  units = "in"
+)
+
 ##############################################################################################################################
 
 
@@ -129,7 +174,7 @@ library(ggrepel)
 stress_labels <- parking_by_hour %>%
   filter(departing_pax >= quantile(departing_pax, 0.85))
   #creates a table containing just the top 15% of hours by passenger volume (labeled)
-ggplot(parking_by_hour, aes(arrival_hour, departing_pax)) +
+high_stress_windows <- ggplot(parking_by_hour, aes(arrival_hour, departing_pax)) +
   geom_area(fill = "steelblue", alpha = 0.3) +
   geom_line(color = "steelblue", linewidth = 1.2) +
   geom_label_repel(data = stress_labels,
@@ -140,6 +185,15 @@ ggplot(parking_by_hour, aes(arrival_hour, departing_pax)) +
        subtitle = "Top 15% of demand hours — cumulative volume Jan 2024–2026",
        x = "Hour of Day", y = "Est. Passenger Volume") +
   theme_minimal()
+
+
+ggsave(
+  filename = "high_stress_windows.png",
+  plot = high_stress_windows,
+  width = 8,
+  height = 6,
+  units = "in"
+)
 
 
 ##############################################################################################################################
@@ -162,13 +216,16 @@ reg_data <- flight_schedule_data %>%
     .groups = "drop"
   )
 
-model <- lm(total_pax ~ hour + I(hour^2) + is_weekend + flight_count, data = reg_data)
+model_passenger_volume <- lm(total_pax ~ hour + I(hour^2) + is_weekend + flight_count, data = reg_data)
   #can we predict total passenger volume from:
     #hour - linear time of day effect
     #curved/non-linear time of day
     #whether being a weekend changes demand
     #whether more flights = more parking pressure
-summary(model)
-tidy(model)  # clean output table
+summary(model_passenger_volume)
+tidy(model_passenger_volume)  # clean output table
 
-summary(model)$r.squared
+summary(model_passenger_volume)$r.squared
+
+
+

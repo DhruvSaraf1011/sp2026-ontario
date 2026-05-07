@@ -12,6 +12,7 @@ library(scales)
 flight_schedule_data <- read_excel(
   "/Users/lindsayeisenman/Downloads/senior year semester 2/DS capstone/Flight Schedule Jan 2024-Jan 2026.xlsx"
 )
+flight_schedule_data
 
 ##############################################################################################################################
 
@@ -40,7 +41,7 @@ arr_extreme <- arrivals %>%
   bind_rows(arrivals %>% slice_min(flights, n = 2))
 
 p_arrivals <- ggplot(arrivals, aes(date, flights)) +
-  geom_line(color = "steelblue") +
+  geom_line(color = "purple") +
   geom_point(data = arr_extreme, color = "firebrick", size = 3) +
   geom_label_repel(
     data = arr_extreme,
@@ -52,6 +53,15 @@ p_arrivals <- ggplot(arrivals, aes(date, flights)) +
   labs(title = "Arrivals Per Day (Since 2024)",
        x = "Date", y = "Flights") +
   theme_minimal()
+
+
+ggsave(
+  filename = "p_arrivals.png",
+  plot = p_arrivals,
+  width = 8,
+  height = 6,
+  units = "in"
+)
 
 # -------------------------------
 # 2. DEPARTURES
@@ -81,6 +91,14 @@ p_departures <- ggplot(departures, aes(date, flights)) +
        x = "Date", y = "Flights") +
   theme_minimal()
 
+ggsave(
+  filename = "p_departures.png",
+  plot = p_departures,
+  width = 8,
+  height = 6,
+  units = "in"
+)
+
 # -------------------------------
 # 3. TOTAL
 # -------------------------------
@@ -93,7 +111,7 @@ tot_extreme <- total %>%
   bind_rows(total %>% slice_min(flights, n = 2))
 
 p_total <- ggplot(total, aes(date, flights)) +
-  geom_line(color = "purple") +
+  geom_line(color = "steelblue") +
   geom_point(data = tot_extreme, color = "firebrick", size = 3) +
   geom_label_repel(
     data = tot_extreme,
@@ -114,6 +132,15 @@ p_departures
 p_total
 
 
+ggsave(
+  filename = "p_total.png",
+  plot = p_total,
+  width = 8,
+  height = 6,
+  units = "in"
+)
+
+
 ##############################################################################################################################
 
 #number of flights per airline
@@ -126,8 +153,8 @@ library(scales)
 # -------------------------------
 # 1. Filter from 2024 onward
 # -------------------------------
-filtered_data <- flight_schedule_data %>%
-  filter(flight_date >= as.Date("2024-01-01"))
+filtered_data <- flight_schedule_data 
+  #filter(flight_date >= as.Date("2024-01-01"))
 
 # -------------------------------
 # 2. Calculate daily arrivals
@@ -162,15 +189,24 @@ avg_daily <- combined_daily %>%
 # -------------------------------
 # 6. Plot stacked bar chart
 # -------------------------------
-ggplot(avg_daily, aes(x = reorder(RAL_CODE_ARR, avg_flights), y = avg_flights, fill = type)) +
+flights_per_airline <- ggplot(avg_daily, aes(x = reorder(RAL_CODE_ARR, avg_flights), y = avg_flights, fill = type)) +
   geom_col() +
   coord_flip() +
-  scale_fill_manual(values = c("Arrivals" = "steelblue", "Departures" = "darkgreen")) +
+  scale_fill_manual(values = c("Arrivals" = "steelblue", "Departures" = "firebrick")) +
   labs(title = "Average Flights per Day by Airline (since 2024)",
        x = "Airline",
        y = "Average Flights per Day",
        fill = "Flight Type") +
   theme_minimal()
+
+
+ggsave(
+  filename = "flights_per_airline.png",
+  plot = flights_per_airline,
+  width = 8,
+  height = 6,
+  units = "in"
+)
 
 
 ##############################################################################################################################
@@ -216,7 +252,7 @@ avg_weekday <- combined_daily %>%
   summarise(avg_flights = mean(flights), .groups = "drop")
 
 # 7. Plot
-ggplot(avg_weekday, aes(x = weekday, y = avg_flights, fill = type)) +
+flights_per_weekday <- ggplot(avg_weekday, aes(x = weekday, y = avg_flights, fill = type)) +
   geom_col(position = "dodge") +
   scale_fill_manual(values = c("Arrivals" = "steelblue", "Departures" = "darkgreen")) +
   labs(title = "Average Flights per Weekday (Since 2024)",
@@ -225,6 +261,15 @@ ggplot(avg_weekday, aes(x = weekday, y = avg_flights, fill = type)) +
        fill = "Flight Type") +
   theme_minimal() +
   theme(text = element_text(size = 12))
+
+
+ggsave(
+  filename = "flights_per_weekday.png",
+  plot = flights_per_weekday,
+  width = 8,
+  height = 6,
+  units = "in"
+)
 
 
 ##############################################################################################################################
